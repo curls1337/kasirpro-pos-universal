@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/pos_models.dart';
+import '../services/bca_gateway_service.dart';
 import '../state/pos_controller.dart';
 import '../theme/app_theme.dart';
 
@@ -41,6 +45,15 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
   PosTransaction? _completedTx;
   String? _printFeedback;
 
+  // BCA QRIS Gateway state
+  BcaChargeResult? _bcaCharge;
+  Uint8List? _qrisImageBytes;
+  bool _isCreatingQris = false;
+  String? _qrisError;
+  String _qrisStatusText = '';
+  Timer? _qrisPollTimer;
+  bool _isPollingRequest = false;
+
   PosController get ctrl => widget.controller;
   int get totalBill => ctrl.cartGrandTotal;
 
@@ -52,6 +65,8 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
 
   @override
   void dispose() {
+    _qrisPollTimer?.cancel();
+    _qrisPollTimer = null;
     _cashController.dispose();
     _refController.dispose();
     _notesController.dispose();
@@ -82,6 +97,8 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
 
   Future<void> _submitPayment() async {
     if (_isProcessing) return;
+    _qrisPollTimer?.cancel();
+    _qrisPollTimer = null;
     final sym = ctrl.currencySymbol;
 
     List<PaymentEntry> payments = [];
@@ -161,6 +178,84 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Uint8List? _decodeQrisImage(String raw) {
+    if (raw.trim().isEmpty) return null;
+    try {
+      final clean = raw.contains(',') ? raw.split(',').last.trim() : raw.trim();
+      return base64Decode(clean);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _createBcaQris() async {
+    if (_isCreatingQris) return;
+    _qrisPollTimer?.cancel();
+    _qrisPollTimer = null;
+    final externalId = 'POS-${DateTime.now().millisecondsSinceEpoch}';
+    setState(() {
+      _isCreatingQris = true;
+      _qrisError = null;
+      _qrisStatusText = '';
+    });
+    try {
+      final charge = await ctrl.createBcaQrisCharge(
+        externalId,
+        totalBill.toDouble(),
+        exactAmount: true,
+      );
+      if (!mounted) return;
+      final bytes = _decodeQrisImage(charge.qrisImageBase64);
+      setState(() {
+        _bcaCharge = charge;
+        _qrisImageBytes = bytes;
+        _isCreatingQris = false;
+        _qrisStatusText = 'Menunggu pembayaran (cek otomatis tiap 3 detik)...';
+        _refController.text = charge.externalId;
+      });
+      _startQrisPolling(charge.externalId);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isCreatingQris = false;
+        _qrisError = e.toString();
+      });
+    }
+  }
+
+  void _startQrisPolling(String externalId) {
+    _qrisPollTimer?.cancel();
+    _qrisPollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted ||
+          _isPollingRequest ||
+          _isProcessing ||
+          _completedTx != null) {
+        return;
+      }
+      _isPollingRequest = true;
+      try {
+        final res = await ctrl.checkBcaQrisStatus(externalId);
+        if (!mounted) return;
+        final st = res.status.toLowerCase();
+        setState(() {
+          _qrisStatusText = 'Status Gateway: ${res.status.toUpperCase()}';
+        });
+        if (res.isPaid || st == 'success') {
+          _qrisPollTimer?.cancel();
+          _qrisPollTimer = null;
+          if (_refController.text.trim().isEmpty) {
+            _refController.text = externalId;
+          }
+          await _submitPayment();
+        }
+      } catch (_) {
+        // Abaikan error jaringan sementara selama polling
+      } finally {
+        _isPollingRequest = false;
+      }
+    });
   }
 
   @override
@@ -273,7 +368,13 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
                   selected: selected,
-                  onSelected: (_) => setState(() => _selectedMethod = m.$1),
+                  onSelected: (_) {
+                    if (m.$1 != 'qris') {
+                      _qrisPollTimer?.cancel();
+                      _qrisPollTimer = null;
+                    }
+                    setState(() => _selectedMethod = m.$1);
+                  },
                   avatar: Icon(
                     m.$3,
                     size: 18,
@@ -292,7 +393,7 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (_selectedMethod == 'cash') _buildCashSection(colors, sym),
-                if (_selectedMethod == 'qris') _buildNonCashSection(colors, 'QRIS Dinamis / Statis', 'Scan QRIS pada layar atau terminal EDC, lalu masukkan referensi jika ada.'),
+                if (_selectedMethod == 'qris') _buildQrisSection(colors, sym),
                 if (_selectedMethod == 'transfer') _buildNonCashSection(colors, 'Transfer Bank', 'Pastikan mutasi rekening sudah masuk sebelum menyelesaikan pembayaran.'),
                 if (_selectedMethod == 'debit') _buildNonCashSection(colors, 'Kartu Debit / Kredit (EDC)', 'Masukkan 4-6 digit Approval Code dari mesin EDC.'),
                 if (_selectedMethod == 'kasbon') _buildKasbonSection(colors, sym),
@@ -406,6 +507,179 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildQrisSection(PosColors colors, String sym) {
+    final store = ctrl.store;
+    final hasGateway = store != null &&
+        store.gatewayUrl.trim().isNotEmpty &&
+        store.gatewayApiKey.trim().isNotEmpty;
+
+    if (!hasGateway) {
+      return _buildNonCashSection(
+        colors,
+        'QRIS Dinamis / Statis',
+        'Scan QRIS pada layar atau terminal EDC, lalu masukkan referensi jika ada.',
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surfaceElevated,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.qr_code_2_rounded, color: colors.brandPrimary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'QRIS BCA Otomatis (Nominal Pas)',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Nominal persis: ${PosFormatters.currency(totalBill, symbol: sym)} (Tanpa Kode Unik)',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: colors.brandPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_bcaCharge == null && !_isCreatingQris)
+            FilledButton.icon(
+              onPressed: _createBcaQris,
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              label: const Text('Buat QRIS BCA (Nominal Pas)'),
+            ),
+          if (_isCreatingQris)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 10),
+                  Text('Membuat QRIS BCA nominal pas...'),
+                ],
+              ),
+            ),
+          if (_qrisError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colors.statusDanger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: colors.statusDanger.withValues(alpha: 0.35)),
+              ),
+              child: Text(
+                _qrisError!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colors.statusDanger,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          if (_bcaCharge != null) ...[
+            if (_qrisImageBytes != null)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colors.borderSubtle),
+                  ),
+                  child: Image.memory(
+                    _qrisImageBytes!,
+                    width: 220,
+                    height: 220,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.surfaceHighlight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'QRIS String:\n${_bcaCharge!.qrisString}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ),
+            const SizedBox(height: 10),
+            Text(
+              'Tagihan: ${PosFormatters.currency(_bcaCharge!.amount, symbol: sym)} • Ref: ${_bcaCharge!.externalId}',
+              textAlign: TextAlign.center,
+              style: AppTheme.tabular(
+                null,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (_qrisStatusText.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _qrisStatusText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _isCreatingQris ? null : _createBcaQris,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Buat Ulang QRIS'),
+            ),
+          ],
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _isProcessing ? null : _submitPayment,
+            icon: const Icon(Icons.verified_outlined, size: 18),
+            label: const Text('Konfirmasi Lunas Manual'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _refController,
+            decoration: const InputDecoration(
+              labelText: 'No. Referensi / External ID (opsional)',
+              prefixIcon: Icon(Icons.tag_rounded),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
