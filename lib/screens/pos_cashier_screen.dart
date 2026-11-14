@@ -488,7 +488,7 @@ class _PosCashierScreenState extends State<PosCashierScreen> {
                     crossAxisCount: isTablet ? 3 : 2,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    childAspectRatio: isTablet ? 1.15 : 1.05,
+                    childAspectRatio: isTablet ? 0.96 : 0.88,
                   ),
                   itemCount: items.length,
                   itemBuilder: (_, idx) {
@@ -560,7 +560,9 @@ class _PosCashierScreenState extends State<PosCashierScreen> {
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
+                            _buildCatalogThumbnail(p, colors),
+                            const SizedBox(height: 8),
                             Expanded(
                               child: Text(
                                 p.name,
@@ -590,6 +592,37 @@ class _PosCashierScreenState extends State<PosCashierScreen> {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCatalogThumbnail(ProductItem p, PosColors colors) {
+    Widget fallback() {
+      final iconData = p.itemType == 'fnb_menu'
+          ? Icons.restaurant_rounded
+          : (p.itemType == 'service'
+              ? Icons.design_services_rounded
+              : Icons.inventory_2_rounded);
+      return Container(
+        color: colors.surfaceElevated,
+        alignment: Alignment.center,
+        child: Icon(iconData, size: 28, color: colors.textMuted),
+      );
+    }
+
+    final url = p.imageUrl.trim();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        height: 62,
+        width: double.infinity,
+        child: url.isEmpty
+            ? fallback()
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => fallback(),
+              ),
+      ),
     );
   }
 

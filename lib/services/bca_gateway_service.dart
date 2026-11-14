@@ -104,6 +104,61 @@ class BcaConnectionResult {
   });
 }
 
+class BarcodeProductLookupResult {
+  final String barcode;
+  final String name;
+  final String brand;
+  final String category;
+  final String unit;
+  final String imageUrl;
+  final int estimatedPrice;
+  final String source; // 'server' | 'openfoodfacts'
+
+  const BarcodeProductLookupResult({
+    required this.barcode,
+    required this.name,
+    this.brand = '',
+    this.category = '',
+    this.unit = 'pcs',
+    this.imageUrl = '',
+    this.estimatedPrice = 0,
+    required this.source,
+  });
+
+  static int _parseInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.round();
+    return int.tryParse(v.toString().replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  }
+
+  factory BarcodeProductLookupResult.fromServerJson(
+    Map<String, dynamic> json,
+    String fallbackBarcode,
+  ) {
+    final raw = (json['data'] is Map<String, dynamic>)
+        ? json['data'] as Map<String, dynamic>
+        : ((json['product'] is Map<String, dynamic>)
+            ? json['product'] as Map<String, dynamic>
+            : json);
+    return BarcodeProductLookupResult(
+      barcode: (raw['barcode'] ?? fallbackBarcode).toString().trim(),
+      name: (raw['name'] ?? raw['product_name'] ?? '').toString().trim(),
+      brand: (raw['brand'] ?? raw['brands'] ?? '').toString().trim(),
+      category: (raw['category'] ?? raw['categories'] ?? '').toString().trim(),
+      unit: ((raw['unit'] ?? raw['quantity'] ?? 'pcs').toString().trim())
+              .isEmpty
+          ? 'pcs'
+          : (raw['unit'] ?? raw['quantity'] ?? 'pcs').toString().trim(),
+      imageUrl: (raw['image_url'] ?? raw['imageUrl'] ?? '').toString().trim(),
+      estimatedPrice: _parseInt(
+        raw['estimated_price'] ?? raw['estimatedPrice'] ?? raw['price'],
+      ),
+      source: 'server',
+    );
+  }
+}
+
 class BcaGatewayService {
   BcaGatewayService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -285,5 +340,101 @@ class BcaGatewayService {
         message: 'Gagal terhubung ke gateway: $e',
       );
     }
+  }
+
+  Future<BarcodeProductLookupResult?> lookupBarcodeProduct({
+    required String baseUrl,
+    String apiKey = '',
+    required String barcode,
+  }) async {
+    final cleanBarcode = barcode.trim();
+    if (cleanBarcode.isEmpty) return null;
+
+    final normalizedUrl = _normalizeBaseUrl(baseUrl);
+    if (normalizedUrl.isNotEmpty) {
+      final serverUri = Uri.tryParse(
+        '$normalizedUrl/api/v1/barcode/${Uri.encodeComponent(cleanBarcode)}',
+      );
+      if (serverUri != null &&
+          (serverUri.isScheme('http') || serverUri.isScheme('https')) &&
+          serverUri.host.isNotEmpty) {
+        try {
+          final response = await _client
+              .get(serverUri, headers: _buildHeaders(apiKey))
+              .timeout(_timeout);
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            final data = _decodeJsonMap(response.body);
+            final result = BarcodeProductLookupResult.fromServerJson(
+              data,
+              cleanBarcode,
+            );
+            if (result.name.isNotEmpty || result.imageUrl.isNotEmpty) {
+              return result;
+            }
+          }
+        } catch (_) {
+          // Fallback ke OpenFoodFacts jika server gagal / tidak merespons
+        }
+      }
+    }
+
+    // Fallback otomatis ke OpenFoodFacts API v3
+    final offUri = Uri.parse(
+      'https://world.openfoodfacts.org/api/v3/product/${Uri.encodeComponent(cleanBarcode)}.json',
+    );
+    try {
+      final response = await _client.get(
+        offUri,
+        headers: const {
+          'Accept': 'application/json',
+          'User-Agent': 'KasirProPOS/1.0',
+        },
+      ).timeout(_timeout);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = _decodeJsonMap(response.body);
+        final product = data['product'];
+        if (product is Map<String, dynamic>) {
+          final rawName = (product['product_name_id'] ??
+                  product['product_name'] ??
+                  product['product_name_en'] ??
+                  product['generic_name'] ??
+                  '')
+              .toString()
+              .trim();
+          final brand = (product['brands'] ?? '').toString().trim();
+          final rawCats = (product['categories'] ?? '').toString().trim();
+          final firstCat = rawCats.isEmpty
+              ? ''
+              : rawCats.split(',').first.trim();
+          final imageUrl = (product['image_front_url'] ??
+                  product['image_url'] ??
+                  product['image_front_small_url'] ??
+                  '')
+              .toString()
+              .trim();
+
+          final displayName = rawName.isNotEmpty
+              ? rawName
+              : (brand.isNotEmpty ? '$brand ($cleanBarcode)' : '');
+
+          if (displayName.isNotEmpty || imageUrl.isNotEmpty) {
+            return BarcodeProductLookupResult(
+              barcode: cleanBarcode,
+              name: displayName,
+              brand: brand,
+              category: firstCat,
+              unit: 'pcs',
+              imageUrl: imageUrl,
+              estimatedPrice: 0,
+              source: 'openfoodfacts',
+            );
+          }
+        }
+      }
+    } catch (_) {
+      // Abaikan kegagalan jaringan saat lookup fallback
+    }
+    return null;
   }
 }

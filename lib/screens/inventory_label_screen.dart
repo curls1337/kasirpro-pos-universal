@@ -139,9 +139,78 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
     final minStockCtrl =
         TextEditingController(text: existing?.minStock.toString() ?? '5');
     final unitCtrl = TextEditingController(text: existing?.unit ?? 'pcs');
+    final imageUrlCtrl =
+        TextEditingController(text: existing?.imageUrl ?? '');
     int? catId = existing?.categoryId;
     String itemType = existing?.itemType ?? 'goods';
     bool trackStock = existing?.trackStock ?? true;
+    bool isLookingUp = false;
+
+    Future<void> runBarcodeLookup(
+      BuildContext modalCtx,
+      StateSetter setModalState,
+      String rawCode,
+    ) async {
+      final code = rawCode.trim();
+      if (code.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Masukkan atau scan kode barcode terlebih dahulu'),
+          ),
+        );
+        return;
+      }
+      setModalState(() => isLookingUp = true);
+      try {
+        final result = await ctrl.lookupProductByBarcode(code);
+        if (!modalCtx.mounted) return;
+        if (result == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Data produk untuk barcode "$code" tidak ditemukan'),
+            ),
+          );
+          return;
+        }
+        setModalState(() {
+          if (result.name.isNotEmpty) {
+            nameCtrl.text = result.name;
+          }
+          if (result.imageUrl.isNotEmpty) {
+            imageUrlCtrl.text = result.imageUrl;
+          }
+          if (result.unit.isNotEmpty) {
+            unitCtrl.text = result.unit;
+          }
+          if (result.estimatedPrice > 0 && sellCtrl.text.trim().isEmpty) {
+            sellCtrl.text = result.estimatedPrice.toString();
+          }
+          if (result.category.isNotEmpty && catId == null) {
+            final target = result.category.toLowerCase();
+            for (final c in ctrl.categories) {
+              final cname = c.name.toLowerCase();
+              if (cname == target ||
+                  cname.contains(target) ||
+                  target.contains(cname)) {
+                catId = c.id;
+                break;
+              }
+            }
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Data produk diisi dari ${result.source == 'server' ? 'Server Gateway' : 'OpenFoodFacts'}',
+            ),
+          ),
+        );
+      } finally {
+        if (modalCtx.mounted) {
+          setModalState(() => isLookingUp = false);
+        }
+      }
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -229,12 +298,20 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                         decoration: InputDecoration(
                           labelText: 'Barcode',
                           suffixIcon: IconButton(
+                            tooltip: 'Scan Barcode Kamera',
                             icon: const Icon(Icons.qr_code_scanner_rounded),
                             onPressed: () async {
                               final scanned =
                                   await BarcodeScannerSheet.show(ctx);
                               if (scanned != null) {
                                 barcodeCtrl.text = scanned;
+                                if (ctx.mounted) {
+                                  await runBarcodeLookup(
+                                    ctx,
+                                    setModalState,
+                                    scanned,
+                                  );
+                                }
                               }
                             },
                           ),
@@ -243,6 +320,76 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonalIcon(
+                    onPressed: isLookingUp
+                        ? null
+                        : () => runBarcodeLookup(
+                              ctx,
+                              setModalState,
+                              barcodeCtrl.text,
+                            ),
+                    icon: isLookingUp
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_download_outlined, size: 18),
+                    label: Text(
+                      isLookingUp ? 'Mencari Data...' : 'Auto-Isi dari Server',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: imageUrlCtrl,
+                  onChanged: (_) => setModalState(() {}),
+                  keyboardType: TextInputType.url,
+                  decoration: InputDecoration(
+                    labelText: 'URL Gambar Produk (Opsional)',
+                    prefixIcon: const Icon(Icons.image_outlined),
+                    suffixIcon: imageUrlCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded),
+                            onPressed: () =>
+                                setModalState(() => imageUrlCtrl.clear()),
+                          )
+                        : null,
+                  ),
+                ),
+                if (imageUrlCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          imageUrlCtrl.text.trim(),
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 64,
+                            height: 64,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Preview Gambar Produk',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -334,6 +481,7 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                         unit: unitCtrl.text.trim().isEmpty
                             ? 'pcs'
                             : unitCtrl.text.trim(),
+                        imageUrl: imageUrlCtrl.text.trim(),
                         trackStock: trackStock,
                         isActive: existing?.isActive ?? true,
                         createdAt: existing?.createdAt ?? now,
@@ -528,6 +676,7 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                     final low = p.trackStock && p.stockQty <= p.minStock;
                     return Card(
                       child: ListTile(
+                        leading: _buildProductThumbnail(p, colors, size: 48),
                         title: Text(p.name,
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
@@ -589,6 +738,41 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildProductThumbnail(
+    ProductItem p,
+    PosColors colors, {
+    double size = 48,
+  }) {
+    Widget fallback() {
+      final iconData = p.itemType == 'fnb_menu'
+          ? Icons.restaurant_rounded
+          : (p.itemType == 'service'
+              ? Icons.design_services_rounded
+              : Icons.inventory_2_rounded);
+      return Container(
+        width: size,
+        height: size,
+        color: colors.surfaceElevated,
+        alignment: Alignment.center,
+        child: Icon(iconData, size: size * 0.5, color: colors.textMuted),
+      );
+    }
+
+    final url = p.imageUrl.trim();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: url.isEmpty
+          ? fallback()
+          : Image.network(
+              url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => fallback(),
+            ),
     );
   }
 

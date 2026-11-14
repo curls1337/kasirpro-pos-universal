@@ -636,11 +636,14 @@ class PosController extends ChangeNotifier {
     await refreshOperationalData();
   }
 
-  Future<void> saveProduct(ProductItem product) async {
-    if (product.id == null) {
-      await _db.insertProduct(product, userId: activeUser?.id);
+  Future<void> saveProduct(ProductItem product, {String? imageUrl}) async {
+    final toSave = imageUrl != null
+        ? product.copyWith(imageUrl: imageUrl.trim())
+        : product;
+    if (toSave.id == null) {
+      await _db.insertProduct(toSave, userId: activeUser?.id);
     } else {
-      await _db.updateProduct(product);
+      await _db.updateProduct(toSave);
     }
     await refreshOperationalData();
   }
@@ -840,6 +843,14 @@ class PosController extends ChangeNotifier {
     return _bcaGateway.testConnection(
       baseUrl: url,
       apiKey: apiKey,
+    );
+  }
+
+  Future<BarcodeProductLookupResult?> lookupProductByBarcode(String barcode) {
+    return _bcaGateway.lookupBarcodeProduct(
+      baseUrl: store?.gatewayUrl ?? '',
+      apiKey: store?.gatewayApiKey ?? '',
+      barcode: barcode,
     );
   }
 

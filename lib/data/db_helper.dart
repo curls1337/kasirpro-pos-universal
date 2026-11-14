@@ -9,7 +9,7 @@ class DbHelper {
   factory DbHelper() => instance;
 
   static const String _dbName = 'kasirpro_universal.db';
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
 
   Database? _database;
 
@@ -55,6 +55,15 @@ class DbHelper {
         );
       } catch (_) {
         // Abaikan jika kolom gateway_api_key sudah ada
+      }
+    }
+    if (oldVersion < 3) {
+      try {
+        await db.execute(
+          "ALTER TABLE products ADD COLUMN image_url TEXT NOT NULL DEFAULT '';",
+        );
+      } catch (_) {
+        // Abaikan jika kolom image_url sudah ada
       }
     }
   }
@@ -121,6 +130,7 @@ class DbHelper {
         stock_qty REAL NOT NULL DEFAULT 0,
         min_stock REAL NOT NULL DEFAULT 5,
         unit TEXT NOT NULL DEFAULT 'pcs',
+        image_url TEXT NOT NULL DEFAULT '',
         track_stock INTEGER NOT NULL DEFAULT 1,
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,

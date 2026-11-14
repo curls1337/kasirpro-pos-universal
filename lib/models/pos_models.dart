@@ -328,6 +328,7 @@ class ProductItem {
   final double stockQty;
   final double minStock;
   final String unit;
+  final String imageUrl;
   final bool trackStock;
   final bool isActive;
   final String createdAt;
@@ -345,6 +346,7 @@ class ProductItem {
     this.stockQty = 0,
     this.minStock = 5,
     this.unit = 'pcs',
+    this.imageUrl = '',
     this.trackStock = true,
     this.isActive = true,
     required this.createdAt,
@@ -367,6 +369,7 @@ class ProductItem {
     double stockQty = 0,
     double minStock = 5,
     String unit = 'pcs',
+    String imageUrl = '',
     bool trackStock = true,
   }) {
     final now = _nowIso();
@@ -381,6 +384,7 @@ class ProductItem {
       stockQty: stockQty,
       minStock: minStock,
       unit: unit,
+      imageUrl: imageUrl,
       trackStock: trackStock,
       createdAt: now,
       updatedAt: now,
@@ -399,6 +403,7 @@ class ProductItem {
     double? stockQty,
     double? minStock,
     String? unit,
+    String? imageUrl,
     bool? trackStock,
     bool? isActive,
     String? createdAt,
@@ -416,6 +421,7 @@ class ProductItem {
       stockQty: stockQty ?? this.stockQty,
       minStock: minStock ?? this.minStock,
       unit: unit ?? this.unit,
+      imageUrl: imageUrl ?? this.imageUrl,
       trackStock: trackStock ?? this.trackStock,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
@@ -435,6 +441,7 @@ class ProductItem {
         'stock_qty': stockQty,
         'min_stock': minStock,
         'unit': unit,
+        'image_url': imageUrl,
         'track_stock': trackStock ? 1 : 0,
         'is_active': isActive ? 1 : 0,
         'created_at': createdAt,
@@ -453,6 +460,7 @@ class ProductItem {
         stockQty: _asDouble(map['stock_qty']),
         minStock: _asDouble(map['min_stock'], 5.0),
         unit: (map['unit'] ?? 'pcs') as String,
+        imageUrl: (map['image_url'] ?? '') as String,
         trackStock: _asBool(map['track_stock'], true),
         isActive: _asBool(map['is_active'], true),
         createdAt: (map['created_at'] ?? _nowIso()) as String,
