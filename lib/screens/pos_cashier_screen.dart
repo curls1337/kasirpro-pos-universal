@@ -4,6 +4,7 @@ import '../models/pos_models.dart';
 import '../state/pos_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barcode_scanner_sheet.dart';
+import '../widgets/product_image_widget.dart';
 import '../widgets/tender_payment_sheet.dart';
 
 /// Layar Kasir Universal: Split-View (Tablet >=720dp) & Katalog + Sticky Cart Bar (HP <720dp)
@@ -596,32 +597,18 @@ class _PosCashierScreenState extends State<PosCashierScreen> {
   }
 
   Widget _buildCatalogThumbnail(ProductItem p, PosColors colors) {
-    Widget fallback() {
-      final iconData = p.itemType == 'fnb_menu'
-          ? Icons.restaurant_rounded
-          : (p.itemType == 'service'
-              ? Icons.design_services_rounded
-              : Icons.inventory_2_rounded);
-      return Container(
-        color: colors.surfaceElevated,
-        alignment: Alignment.center,
-        child: Icon(iconData, size: 28, color: colors.textMuted),
-      );
-    }
-
-    final url = p.imageUrl.trim();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(
-        height: 62,
+    return SizedBox(
+      height: 62,
+      width: double.infinity,
+      child: ProductImageWidget(
+        imageUrl: p.imageUrl,
+        itemType: p.itemType,
         width: double.infinity,
-        child: url.isEmpty
-            ? fallback()
-            : Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => fallback(),
-              ),
+        height: 62,
+        borderRadius: BorderRadius.circular(10),
+        iconSize: 28,
+        backgroundColor: colors.surfaceElevated,
+        iconColor: colors.textMuted,
       ),
     );
   }

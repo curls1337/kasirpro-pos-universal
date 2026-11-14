@@ -70,12 +70,16 @@ jobs:
               'android.permission.BLUETOOTH_SCAN',
               'android.permission.BLUETOOTH_CONNECT',
               'android.permission.CAMERA',
+              'android.permission.READ_MEDIA_IMAGES',
+              'android.permission.READ_EXTERNAL_STORAGE',
           ]
           inject = []
           for p in perms:
               if p not in text:
                   if p in ('android.permission.BLUETOOTH', 'android.permission.BLUETOOTH_ADMIN'):
                       inject.append(f'    <uses-permission android:name="{p}" android:maxSdkVersion="30" />')
+                  elif p == 'android.permission.READ_EXTERNAL_STORAGE':
+                      inject.append(f'    <uses-permission android:name="{p}" android:maxSdkVersion="32" />')
                   elif p == 'android.permission.BLUETOOTH_SCAN':
                       inject.append(f'    <uses-permission android:name="{p}" android:usesPermissionFlags="neverForLocation" />')
                   else:
@@ -224,7 +228,8 @@ jobs:
           plist["CFBundleName"] = "KasirPro POS"
           plist["NSBluetoothAlwaysUsageDescription"] = "KasirPro POS membutuhkan akses Bluetooth untuk terhubung ke printer struk dan label thermal."
           plist["NSBluetoothPeripheralUsageDescription"] = "KasirPro POS membutuhkan akses Bluetooth untuk mencetak struk dan label barcode."
-          plist["NSCameraUsageDescription"] = "KasirPro POS membutuhkan akses Kamera untuk memindai barcode produk."
+          plist["NSCameraUsageDescription"] = "KasirPro POS membutuhkan akses Kamera untuk memindai barcode dan mengambil foto produk."
+          plist["NSPhotoLibraryUsageDescription"] = "KasirPro POS membutuhkan akses Galeri Foto untuk memilih gambar produk."
           plist["NSLocalNetworkUsageDescription"] = "KasirPro POS membutuhkan akses jaringan lokal untuk mencetak ke printer thermal Wi-Fi/LAN."
 
           with plist_path.open("wb") as f:

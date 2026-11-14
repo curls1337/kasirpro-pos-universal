@@ -1,9 +1,15 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import '../models/pos_models.dart';
 import '../state/pos_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barcode_scanner_sheet.dart';
+import '../widgets/product_image_widget.dart';
 
 /// Layar Inventaris: Tab Produk CRUD, Tab Stock Opname / Mutasi, Tab Cetak Label Barcode Thermal
 class InventoryLabelScreen extends StatefulWidget {
@@ -145,6 +151,89 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
     String itemType = existing?.itemType ?? 'goods';
     bool trackStock = existing?.trackStock ?? true;
     bool isLookingUp = false;
+
+    Future<String> saveProductImagePermanently({
+      File? sourceFile,
+      Uint8List? bytes,
+      required String originalName,
+    }) async {
+      final appDir = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory(path.join(appDir.path, 'product_images'));
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+      var ext = path.extension(originalName).toLowerCase();
+      if (ext.isEmpty) ext = '.jpg';
+      final destPath = path.join(
+        imagesDir.path,
+        'prod_${DateTime.now().millisecondsSinceEpoch}$ext',
+      );
+      if (sourceFile != null) {
+        await sourceFile.copy(destPath);
+      } else if (bytes != null) {
+        await File(destPath).writeAsBytes(bytes, flush: true);
+      }
+      return destPath;
+    }
+
+    Future<void> pickImageFromSource(
+      BuildContext modalCtx,
+      StateSetter setModalState,
+      ImageSource source,
+    ) async {
+      try {
+        final picked = await ImagePicker().pickImage(
+          source: source,
+          maxWidth: 900,
+          imageQuality: 85,
+        );
+        if (picked == null) return;
+        final savedPath = await saveProductImagePermanently(
+          sourceFile: File(picked.path),
+          originalName: picked.path,
+        );
+        if (!modalCtx.mounted) return;
+        setModalState(() {
+          imageUrlCtrl.text = savedPath;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengambil foto: $e')),
+        );
+      }
+    }
+
+    Future<void> pickImageFromFile(
+      BuildContext modalCtx,
+      StateSetter setModalState,
+    ) async {
+      try {
+        final res = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          withData: true,
+        );
+        if (res == null || res.files.isEmpty) return;
+        final file = res.files.single;
+        final filePath = file.path;
+        final savedPath = await saveProductImagePermanently(
+          sourceFile: (filePath != null && filePath.isNotEmpty)
+              ? File(filePath)
+              : null,
+          bytes: file.bytes,
+          originalName: filePath ?? file.name,
+        );
+        if (!modalCtx.mounted) return;
+        setModalState(() {
+          imageUrlCtrl.text = savedPath;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memilih file gambar: $e')),
+        );
+      }
+    }
 
     Future<void> runBarcodeLookup(
       BuildContext modalCtx,
@@ -349,7 +438,7 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                   onChanged: (_) => setModalState(() {}),
                   keyboardType: TextInputType.url,
                   decoration: InputDecoration(
-                    labelText: 'URL Gambar Produk (Opsional)',
+                    labelText: 'URL / Path Gambar Produk (Opsional)',
                     prefixIcon: const Icon(Icons.image_outlined),
                     suffixIcon: imageUrlCtrl.text.isNotEmpty
                         ? IconButton(
@@ -360,31 +449,91 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
                         : null,
                   ),
                 ),
-                if (imageUrlCtrl.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          imageUrlCtrl.text.trim(),
-                          width: 64,
-                          height: 64,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 64,
-                            height: 64,
-                            color: Colors.black12,
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.broken_image_outlined),
-                          ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 10),
+                        ),
+                        onPressed: () => pickImageFromSource(
+                          ctx,
+                          setModalState,
+                          ImageSource.camera,
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('📷 Kamera'),
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 10),
+                        ),
+                        onPressed: () => pickImageFromSource(
+                          ctx,
+                          setModalState,
+                          ImageSource.gallery,
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('🖼️ Galeri'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 10),
+                        ),
+                        onPressed: () => pickImageFromFile(ctx, setModalState),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('📁 File'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (imageUrlCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      ProductImageWidget(
+                        imageUrl: imageUrlCtrl.text.trim(),
+                        itemType: itemType,
+                        width: 64,
+                        height: 64,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Preview Gambar Produk',
-                          style: TextStyle(fontSize: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Preview Gambar Produk',
+                              style: TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              ProductImageWidget.isRemoteUrl(imageUrlCtrl.text)
+                                  ? 'Sumber: URL Eksternal'
+                                  : 'Sumber: File Lokal Perangkat',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: ctx.posColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -746,33 +895,15 @@ class _InventoryLabelScreenState extends State<InventoryLabelScreen>
     PosColors colors, {
     double size = 48,
   }) {
-    Widget fallback() {
-      final iconData = p.itemType == 'fnb_menu'
-          ? Icons.restaurant_rounded
-          : (p.itemType == 'service'
-              ? Icons.design_services_rounded
-              : Icons.inventory_2_rounded);
-      return Container(
-        width: size,
-        height: size,
-        color: colors.surfaceElevated,
-        alignment: Alignment.center,
-        child: Icon(iconData, size: size * 0.5, color: colors.textMuted),
-      );
-    }
-
-    final url = p.imageUrl.trim();
-    return ClipRRect(
+    return ProductImageWidget(
+      imageUrl: p.imageUrl,
+      itemType: p.itemType,
+      width: size,
+      height: size,
       borderRadius: BorderRadius.circular(10),
-      child: url.isEmpty
-          ? fallback()
-          : Image.network(
-              url,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => fallback(),
-            ),
+      iconSize: size * 0.5,
+      backgroundColor: colors.surfaceElevated,
+      iconColor: colors.textMuted,
     );
   }
 

@@ -32,8 +32,9 @@ dependencies:
   barcode: ^2.2.8
   image: ^4.2.0
 
-  # Camera Barcode Scanner & Scan Beep Audio
+  # Camera Barcode Scanner, Image Picker & Scan Beep Audio
   mobile_scanner: ^5.2.3
+  image_picker: ^1.1.2
   audioplayers: ^6.1.0
 
   # Formatting, Export CSV/PDF, Share & File Picker
