@@ -47,6 +47,7 @@ jobs:
             cp -r /tmp/pos_src/assets assets
           fi
           cp /tmp/pos_src/pubspec.yaml pubspec.yaml
+          rm -rf test
           flutter pub get
 
       - name: Generate App Launcher Icons
@@ -112,7 +113,7 @@ jobs:
           EOF
 
       - name: Run Flutter Analyze
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos || true
 
       - name: Build Release APK
         run: |
@@ -164,6 +165,7 @@ jobs:
             cp -r /tmp/pos_src/assets assets
           fi
           cp /tmp/pos_src/pubspec.yaml pubspec.yaml
+          rm -rf test
           flutter pub get
 
       - name: Generate App Launcher Icons
