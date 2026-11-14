@@ -9,7 +9,7 @@ class DbHelper {
   factory DbHelper() => instance;
 
   static const String _dbName = 'kasirpro_universal.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
   Database? _database;
 
@@ -36,7 +36,27 @@ class DbHelper {
         }
       },
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      try {
+        await db.execute(
+          "ALTER TABLE stores ADD COLUMN gateway_url TEXT NOT NULL DEFAULT '';",
+        );
+      } catch (_) {
+        // Abaikan jika kolom gateway_url sudah ada
+      }
+      try {
+        await db.execute(
+          "ALTER TABLE stores ADD COLUMN gateway_api_key TEXT NOT NULL DEFAULT '';",
+        );
+      } catch (_) {
+        // Abaikan jika kolom gateway_api_key sudah ada
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -52,6 +72,8 @@ class DbHelper {
         service_charge_percent REAL NOT NULL DEFAULT 0.0,
         currency_symbol TEXT NOT NULL DEFAULT 'Rp',
         receipt_footer TEXT DEFAULT 'Terima kasih atas kunjungan Anda',
+        gateway_url TEXT NOT NULL DEFAULT '',
+        gateway_api_key TEXT NOT NULL DEFAULT '',
         setup_completed INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL

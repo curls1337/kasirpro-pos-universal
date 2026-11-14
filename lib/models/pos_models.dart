@@ -35,6 +35,8 @@ class StoreConfig {
   final double serviceChargePercent;
   final String currencySymbol;
   final String receiptFooter;
+  final String gatewayUrl;
+  final String gatewayApiKey;
   final bool setupCompleted;
   final String createdAt;
   final String updatedAt;
@@ -49,6 +51,8 @@ class StoreConfig {
     this.serviceChargePercent = 0.0,
     this.currencySymbol = 'Rp',
     this.receiptFooter = 'Terima kasih atas kunjungan Anda',
+    this.gatewayUrl = '',
+    this.gatewayApiKey = '',
     this.setupCompleted = true,
     required this.createdAt,
     required this.updatedAt,
@@ -63,6 +67,8 @@ class StoreConfig {
     double serviceChargePercent = 0.0,
     String currencySymbol = 'Rp',
     String receiptFooter = 'Terima kasih atas kunjungan Anda',
+    String gatewayUrl = '',
+    String gatewayApiKey = '',
   }) {
     final now = _nowIso();
     return StoreConfig(
@@ -74,6 +80,8 @@ class StoreConfig {
       serviceChargePercent: serviceChargePercent,
       currencySymbol: currencySymbol,
       receiptFooter: receiptFooter,
+      gatewayUrl: gatewayUrl,
+      gatewayApiKey: gatewayApiKey,
       setupCompleted: true,
       createdAt: now,
       updatedAt: now,
@@ -90,6 +98,8 @@ class StoreConfig {
     double? serviceChargePercent,
     String? currencySymbol,
     String? receiptFooter,
+    String? gatewayUrl,
+    String? gatewayApiKey,
     bool? setupCompleted,
     String? createdAt,
     String? updatedAt,
@@ -104,6 +114,8 @@ class StoreConfig {
       serviceChargePercent: serviceChargePercent ?? this.serviceChargePercent,
       currencySymbol: currencySymbol ?? this.currencySymbol,
       receiptFooter: receiptFooter ?? this.receiptFooter,
+      gatewayUrl: gatewayUrl ?? this.gatewayUrl,
+      gatewayApiKey: gatewayApiKey ?? this.gatewayApiKey,
       setupCompleted: setupCompleted ?? this.setupCompleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? _nowIso(),
@@ -120,6 +132,8 @@ class StoreConfig {
         'service_charge_percent': serviceChargePercent,
         'currency_symbol': currencySymbol,
         'receipt_footer': receiptFooter,
+        'gateway_url': gatewayUrl,
+        'gateway_api_key': gatewayApiKey,
         'setup_completed': setupCompleted ? 1 : 0,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -135,6 +149,8 @@ class StoreConfig {
         serviceChargePercent: _asDouble(map['service_charge_percent']),
         currencySymbol: (map['currency_symbol'] ?? 'Rp') as String,
         receiptFooter: (map['receipt_footer'] ?? '') as String,
+        gatewayUrl: (map['gateway_url'] ?? '') as String,
+        gatewayApiKey: (map['gateway_api_key'] ?? '') as String,
         setupCompleted: _asBool(map['setup_completed'], true),
         createdAt: (map['created_at'] ?? _nowIso()) as String,
         updatedAt: (map['updated_at'] ?? _nowIso()) as String,

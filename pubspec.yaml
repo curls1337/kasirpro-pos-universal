@@ -19,6 +19,9 @@ dependencies:
   # Security (Salted SHA-256 PIN Hashing)
   crypto: ^3.0.5
 
+  # HTTP Client (BCA Payment Gateway)
+  http: ^1.2.2
+
   # Thermal Printer Bluetooth & Permissions
   print_bluetooth_thermal: ^1.1.1
   permission_handler: ^11.3.1
