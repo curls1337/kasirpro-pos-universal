@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Full-bleed Commercial Obsidian-Cobalt Background Gradient (Opaque for iOS AppIcon) -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="55%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#172554"/>
+    </linearGradient>
+
+    <!-- Subtle Ambient Radial Glow Behind Emblem -->
+    <radialGradient id="ambientGlow" cx="50%" cy="46%" r="50%">
+      <stop offset="0%" stop-color="#2563EB" stop-opacity="0.42"/>
+      <stop offset="60%" stop-color="#1D4ED8" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Main POS Terminal / Receipt Card Gradient -->
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+
+    <!-- Primary Cobalt Accent Gradient -->
+    <linearGradient id="cobaltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <!-- Emerald Transaction Success Accent -->
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Soft Drop Shadow for Depth -->
+    <filter id="cardShadow" x="-15%" y="-15%" width="130%" height="135%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#020617" flood-opacity="0.55"/>
+    </filter>
+    <filter id="badgeShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#020617" flood-opacity="0.40"/>
+    </filter>
+  </defs>
+
+  <!-- 1. Full-Bleed Opaque Background -->
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bgGrad)"/>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#ambientGlow)"/>
+
+  <!-- Subtle Geometric Grid Accent Lines (Fintech Precision) -->
+  <g opacity="0.07" stroke="#93C5FD" stroke-width="2" fill="none">
+    <circle cx="512" cy="512" r="390"/>
+    <circle cx="512" cy="512" r="290"/>
+  </g>
+
+  <!-- 2. Outer POS Terminal / Scan Frame Corners -->
+  <g stroke="#38BDF8" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85">
+    <!-- Top-Left Bracket -->
+    <path d="M 204 284 L 204 224 C 204 206 218 192 236 192 L 296 192"/>
+    <!-- Top-Right Bracket -->
+    <path d="M 728 192 L 788 192 C 806 192 820 206 820 224 L 820 284"/>
+    <!-- Bottom-Left Bracket -->
+    <path d="M 204 740 L 204 800 C 204 818 218 832 236 832 L 296 832"/>
+    <!-- Bottom-Right Bracket -->
+    <path d="M 728 832 L 788 832 C 806 832 820 818 820 800 L 820 740"/>
+  </g>
+
+  <!-- 3. Central Crisp Receipt / POS Screen Emblem -->
+  <g filter="url(#cardShadow)">
+    <!-- Receipt / Terminal Body with serrated bottom edge -->
+    <path d="
+      M 312 248
+      C 312 221.49 333.49 200 360 200
+      L 664 200
+      C 690.51 200 712 221.49 712 248
+      L 712 746
+      C 712 758 698 765 688 758
+      L 652 732
+      L 612 762
+      C 605 767 595 767 588 762
+      L 548 732
+      L 512 762
+      L 476 732
+      L 436 762
+      C 429 767 419 767 412 762
+      L 372 732
+      L 336 758
+      C 326 765 312 758 312 746
+      Z"
+      fill="url(#cardGrad)"/>
+  </g>
+
+  <!-- 4. Top POS Display Header Bar inside Receipt -->
+  <rect x="356" y="252" width="312" height="108" rx="24" fill="url(#cobaltGrad)"/>
+  <!-- Display Bar Content: Geometric POS Dot + Balance Line -->
+  <circle cx="404" cy="306" r="18" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="444" y="290" width="176" height="14" rx="7" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="444" y="316" width="112" height="10" rx="5" fill="#BFDBFE" opacity="0.85"/>
+
+  <!-- 5. Receipt Line Items (Crisp Minimalist Bars) -->
+  <g fill="#94A3B8" opacity="0.75">
+    <rect x="364" y="408" width="172" height="20" rx="10"/>
+    <rect x="576" y="408" width="84" height="20" rx="10" fill="#1E293B" opacity="0.85"/>
+
+    <rect x="364" y="460" width="140" height="20" rx="10"/>
+    <rect x="576" y="460" width="84" height="20" rx="10" fill="#1E293B" opacity="0.85"/>
+  </g>
+
+  <!-- Divider Dashed Line -->
+  <line x1="364" y1="518" x2="660" y2="518" stroke="#CBD5E1" stroke-width="6" stroke-dasharray="14 14" stroke-linecap="round"/>
+
+  <!-- 6. Barcode / Universal Scan Bars at Lower Receipt -->
+  <g fill="#0F172A" opacity="0.88">
+    <rect x="364" y="556" width="14" height="86" rx="4"/>
+    <rect x="390" y="556" width="8" height="86" rx="3"/>
+    <rect x="410" y="556" width="20" height="86" rx="4"/>
+    <rect x="444" y="556" width="10" height="86" rx="3"/>
+    <rect x="468" y="556" width="16" height="86" rx="4"/>
+    <rect x="498" y="556" width="8" height="86" rx="3"/>
+    <rect x="520" y="556" width="22" height="86" rx="4"/>
+    <rect x="556" y="556" width="10" height="86" rx="3"/>
+  </g>
+
+  <!-- 7. Floating Emerald Verified / Payment Checkmark Badge (Bottom-Right Anchor) -->
+  <g filter="url(#badgeShadow)">
+    <circle cx="676" cy="616" r="108" fill="#0F172A"/>
+    <circle cx="676" cy="616" r="94" fill="url(#emeraldGrad)"/>
+    <path d="M 632 618 L 664 650 L 724 582"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="24"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>
