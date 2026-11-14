@@ -169,7 +169,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Android-APK
-          path: pos_universal/KasirProPOS.apk
+          path: KasirProPOS.apk
 
   build-ios:
     name: Build iOS Sideload IPA (Flutter --no-codesign)
@@ -274,7 +274,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: iOS-IPA
-          path: pos_universal/KasirProPOS.ipa
+          path: KasirProPOS.ipa
 
   publish-release:
     name: Publish IPA & APK to GitHub Releases
