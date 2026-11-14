@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/bca_gateway_service.dart';
 import '../state/pos_controller.dart';
 import '../theme/app_theme.dart';
 
@@ -22,12 +23,17 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
   final _addressCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
 
-  // Step 2: Pajak & Mata Uang
+  // Step 2: Pajak & Mata Uang (+ BCA Payment Gateway Opsional)
   final _currencyCtrl = TextEditingController(text: 'Rp');
   final _taxCtrl = TextEditingController(text: '0');
   final _serviceCtrl = TextEditingController(text: '0');
   final _footerCtrl =
       TextEditingController(text: 'Terima kasih atas kunjungan Anda');
+  final _gatewayUrlCtrl = TextEditingController();
+  final _gatewayApiKeyCtrl = TextEditingController();
+  bool _obscureGatewayKey = true;
+  bool _testingGateway = false;
+  BcaConnectionResult? _gatewayTestResult;
 
   // Step 3: Akun Owner & PIN 6-digit
   final _ownerNameCtrl = TextEditingController();
@@ -46,6 +52,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     _taxCtrl.dispose();
     _serviceCtrl.dispose();
     _footerCtrl.dispose();
+    _gatewayUrlCtrl.dispose();
+    _gatewayApiKeyCtrl.dispose();
     _ownerNameCtrl.dispose();
     _pinCtrl.dispose();
     _confirmPinCtrl.dispose();
@@ -96,6 +104,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
       receiptFooter: _footerCtrl.text,
       ownerName: ownerName,
       ownerPin: pin,
+      gatewayUrl: _gatewayUrlCtrl.text.trim(),
+      gatewayApiKey: _gatewayApiKeyCtrl.text.trim(),
     );
 
     if (!ok && mounted) {
@@ -333,6 +343,126 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
           decoration: const InputDecoration(
             labelText: 'Teks Footer Struk',
             prefixIcon: Icon(Icons.receipt_long_outlined),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surfaceElevated,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.qr_code_2_rounded,
+                      size: 20, color: colors.brandPrimary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'BCA Payment Gateway (QRIS Otomatis — Opsional)',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Isi jika ingin menerima QRIS nominal pas otomatis. Bisa diisi nanti di Pengaturan.',
+                style: TextStyle(fontSize: 12, color: colors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _gatewayUrlCtrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'URL Gateway (opsional)',
+                  hintText: 'https://gateway.tokoanda.com',
+                  prefixIcon: Icon(Icons.link_rounded),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _gatewayApiKeyCtrl,
+                obscureText: _obscureGatewayKey,
+                decoration: InputDecoration(
+                  labelText: 'API Key Merchant (opsional)',
+                  prefixIcon: const Icon(Icons.vpn_key_outlined),
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(
+                        () => _obscureGatewayKey = !_obscureGatewayKey),
+                    icon: Icon(_obscureGatewayKey
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _testingGateway
+                    ? null
+                    : () async {
+                        setState(() {
+                          _testingGateway = true;
+                          _gatewayTestResult = null;
+                        });
+                        final res = await widget.controller
+                            .testBcaGatewayConnection(
+                          _gatewayUrlCtrl.text,
+                          _gatewayApiKeyCtrl.text,
+                        );
+                        if (mounted) {
+                          setState(() {
+                            _testingGateway = false;
+                            _gatewayTestResult = res;
+                          });
+                        }
+                      },
+                icon: _testingGateway
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                label: Text(
+                  _testingGateway ? 'Menguji Koneksi...' : 'Tes Koneksi',
+                ),
+              ),
+              if (_gatewayTestResult != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (_gatewayTestResult!.success
+                            ? colors.statusSuccess
+                            : colors.statusDanger)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: (_gatewayTestResult!.success
+                              ? colors.statusSuccess
+                              : colors.statusDanger)
+                          .withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Text(
+                    _gatewayTestResult!.message,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _gatewayTestResult!.success
+                          ? colors.statusSuccess
+                          : colors.statusDanger,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],

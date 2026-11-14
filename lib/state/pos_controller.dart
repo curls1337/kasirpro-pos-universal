@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/db_helper.dart';
 import '../models/pos_models.dart';
 import '../services/auth_service.dart';
+import '../services/bca_gateway_service.dart';
 import '../services/export_service.dart';
 import '../services/printer_manager.dart';
 
@@ -26,6 +27,7 @@ class PosController extends ChangeNotifier {
   final AuthService _auth = AuthService.instance;
   final PrinterManager _printerManager = PrinterManager.instance;
   final ExportService _export = ExportService.instance;
+  final BcaGatewayService _bcaGateway = BcaGatewayService();
 
   bool isLoading = true;
   bool isInitialized = false;
@@ -135,6 +137,8 @@ class PosController extends ChangeNotifier {
     required String receiptFooter,
     required String ownerName,
     required String ownerPin,
+    String gatewayUrl = '',
+    String gatewayApiKey = '',
   }) async {
     isLoading = true;
     errorMessage = null;
@@ -153,6 +157,8 @@ class PosController extends ChangeNotifier {
         currencySymbol:
             currencySymbol.trim().isEmpty ? 'Rp' : currencySymbol.trim(),
         receiptFooter: receiptFooter.trim(),
+        gatewayUrl: gatewayUrl.trim(),
+        gatewayApiKey: gatewayApiKey.trim(),
       );
       final ownerUser = AppUser(
         name: ownerName.trim(),
@@ -791,16 +797,64 @@ class PosController extends ChangeNotifier {
   }
 
   // =========================================================================
+  // BCA PAYMENT GATEWAY (QRIS NOMINAL PAS)
+  // =========================================================================
+
+  bool get hasBcaGatewayConfigured =>
+      (store?.gatewayUrl.trim().isNotEmpty ?? false) &&
+      (store?.gatewayApiKey.trim().isNotEmpty ?? false);
+
+  Future<BcaChargeResult> createBcaQrisCharge(
+    String externalId,
+    double amount, {
+    bool exactAmount = true,
+  }) {
+    return _bcaGateway.createQrisCharge(
+      baseUrl: store?.gatewayUrl ?? '',
+      apiKey: store?.gatewayApiKey ?? '',
+      externalId: externalId,
+      amount: amount,
+      exactAmount: exactAmount,
+    );
+  }
+
+  Future<BcaStatusResult> checkBcaQrisStatus(String externalId) {
+    return _bcaGateway.checkPaymentStatus(
+      baseUrl: store?.gatewayUrl ?? '',
+      apiKey: store?.gatewayApiKey ?? '',
+      externalId: externalId,
+    );
+  }
+
+  Future<BcaConnectionResult> testBcaGatewayConnection(
+    String url,
+    String apiKey,
+  ) {
+    return _bcaGateway.testConnection(
+      baseUrl: url,
+      apiKey: apiKey,
+    );
+  }
+
+  // =========================================================================
   // PENGATURAN TOKO, STAFF, PRINTER, BACKUP & EXPORT
   // =========================================================================
 
-  Future<void> updateStore(StoreConfig updated) async {
+  Future<void> updateStore(
+    StoreConfig updated, {
+    String? gatewayUrl,
+    String? gatewayApiKey,
+  }) async {
     if (!canAccess('settings_admin')) {
       throw StateError(
         'Akses ditolak: Anda tidak memiliki izin untuk mengubah pengaturan toko.',
       );
     }
-    await _db.saveStoreConfig(updated);
+    final toSave = updated.copyWith(
+      gatewayUrl: gatewayUrl?.trim() ?? updated.gatewayUrl.trim(),
+      gatewayApiKey: gatewayApiKey?.trim() ?? updated.gatewayApiKey.trim(),
+    );
+    await _db.saveStoreConfig(toSave);
     await refreshOperationalData();
   }
 

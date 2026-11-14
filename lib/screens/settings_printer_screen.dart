@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/pos_models.dart';
+import '../services/bca_gateway_service.dart';
 import '../services/printer_manager.dart';
 import '../state/pos_controller.dart';
 import '../theme/app_theme.dart';
@@ -118,6 +119,133 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
                   ),
                 );
                 if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openBcaGatewayDialog() async {
+    final store = ctrl.store;
+    if (store == null) return;
+
+    final urlCtrl = TextEditingController(text: store.gatewayUrl);
+    final apiKeyCtrl = TextEditingController(text: store.gatewayApiKey);
+    bool obscureKey = true;
+    bool testing = false;
+    BcaConnectionResult? testResult;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('BCA Payment Gateway (QRIS Nominal Pas)'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: urlCtrl,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'URL Gateway',
+                    hintText: 'https://gateway.tokoanda.com',
+                    prefixIcon: Icon(Icons.link_rounded),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: apiKeyCtrl,
+                  obscureText: obscureKey,
+                  decoration: InputDecoration(
+                    labelText: 'API Key Merchant',
+                    prefixIcon: const Icon(Icons.vpn_key_outlined),
+                    suffixIcon: IconButton(
+                      onPressed: () =>
+                          setDialogState(() => obscureKey = !obscureKey),
+                      icon: Icon(
+                          obscureKey ? Icons.visibility_off : Icons.visibility),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: testing
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            testing = true;
+                            testResult = null;
+                          });
+                          final res = await ctrl.testBcaGatewayConnection(
+                            urlCtrl.text,
+                            apiKeyCtrl.text,
+                          );
+                          if (ctx.mounted) {
+                            setDialogState(() {
+                              testing = false;
+                              testResult = res;
+                            });
+                          }
+                        },
+                  icon: testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                  label: Text(testing ? 'Menguji...' : 'Tes Koneksi'),
+                ),
+                if (testResult != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    testResult!.message,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: testResult!.success
+                          ? ctx.posColors.statusSuccess
+                          : ctx.posColors.statusDanger,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final cleanUrl = urlCtrl.text.trim();
+                final cleanKey = apiKeyCtrl.text.trim();
+                await ctrl.updateStore(
+                  store.copyWith(
+                    gatewayUrl: cleanUrl,
+                    gatewayApiKey: cleanKey,
+                    updatedAt: DateTime.now().toUtc().toIso8601String(),
+                  ),
+                  gatewayUrl: cleanUrl,
+                  gatewayApiKey: cleanKey,
+                );
+                if (ctx.mounted) {
+                  Navigator.of(ctx).pop();
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Konfigurasi BCA Payment Gateway berhasil disimpan'),
+                    ),
+                  );
+                }
               },
               child: const Text('Simpan'),
             ),
@@ -540,6 +668,85 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        if (isOwner) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.qr_code_2_rounded, color: colors.brandPrimary),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'BCA Payment Gateway (QRIS Nominal Pas)',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Chip(
+                        label: Text(
+                          ctrl.hasBcaGatewayConfigured
+                              ? 'Terkonfigurasi'
+                              : 'Belum Diatur',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: ctrl.hasBcaGatewayConfigured
+                                ? colors.statusSuccess
+                                : colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    ctrl.hasBcaGatewayConfigured
+                        ? 'URL: ${store?.gatewayUrl}\nAPI Key: ••••••••'
+                        : 'Hubungkan server BCA Payment Gateway untuk QRIS otomatis dengan nominal persis tanpa kode unik.',
+                    style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: _openBcaGatewayDialog,
+                        icon: const Icon(Icons.settings_ethernet_rounded,
+                            size: 18),
+                        label: Text(ctrl.hasBcaGatewayConfigured
+                            ? 'Edit Gateway'
+                            : 'Konfigurasi Gateway'),
+                      ),
+                      if (ctrl.hasBcaGatewayConfigured)
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final res = await ctrl.testBcaGatewayConnection(
+                              store?.gatewayUrl ?? '',
+                              store?.gatewayApiKey ?? '',
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(res.message)),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.wifi_tethering_rounded,
+                              size: 18),
+                          label: const Text('Tes Koneksi'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
