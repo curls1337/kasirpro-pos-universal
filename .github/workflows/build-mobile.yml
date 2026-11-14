@@ -89,7 +89,7 @@ jobs:
               if gp.exists():
                   gtext = gp.read_text(encoding="utf-8")
                   if gradle_name.endswith(".kts"):
-                      gtext = re.sub(r'^(\s*)compileSdk\s*=.*$', r'\1compileSdk = 35', gtext, flags=re.MULTILINE)
+                      gtext = re.sub(r'^(\s*)compileSdk\s*=.*$', r'\1compileSdk = 36', gtext, flags=re.MULTILINE)
                       gtext = re.sub(r'^(\s*)minSdk\s*=.*$', r'\1minSdk = 21', gtext, flags=re.MULTILINE)
                       if "checkReleaseBuilds" not in gtext:
                           gtext = re.sub(
@@ -99,8 +99,8 @@ jobs:
                               count=1,
                           )
                   else:
-                      gtext = re.sub(r'^(\s*)compileSdkVersion\s+.*$', r'\1compileSdkVersion 35', gtext, flags=re.MULTILINE)
-                      gtext = re.sub(r'^(\s*)compileSdk\s+.*$', r'\1compileSdk 35', gtext, flags=re.MULTILINE)
+                      gtext = re.sub(r'^(\s*)compileSdkVersion\s+.*$', r'\1compileSdkVersion 36', gtext, flags=re.MULTILINE)
+                      gtext = re.sub(r'^(\s*)compileSdk\s+.*$', r'\1compileSdk 36', gtext, flags=re.MULTILINE)
                       gtext = re.sub(r'^(\s*)minSdkVersion\s+.*$', r'\1minSdkVersion 21', gtext, flags=re.MULTILINE)
                       if "checkReleaseBuilds" not in gtext:
                           gtext = re.sub(
