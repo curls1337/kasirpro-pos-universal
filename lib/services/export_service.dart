@@ -250,6 +250,122 @@ class ExportService {
     return doc.save();
   }
 
+  Future<Uint8List> buildQrisSlipPdf({
+    required StoreConfig store,
+    required String externalId,
+    required double amount,
+    required String qrisString,
+    Uint8List? qrisImageBytes,
+    int paperWidthMm = 58,
+  }) async {
+    final doc = pw.Document();
+    final sym = store.currencySymbol;
+    final pageWidth = paperWidthMm >= 80 ? 80.0 : 58.0;
+    final pageFormat = PdfPageFormat(
+      pageWidth * PdfPageFormat.mm,
+      double.infinity,
+      marginAll: 3 * PdfPageFormat.mm,
+    );
+    final qrSize = paperWidthMm >= 80 ? 44 * PdfPageFormat.mm : 36 * PdfPageFormat.mm;
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: pageFormat,
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Center(
+                child: pw.Text(
+                  store.name,
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              if (store.address.isNotEmpty)
+                pw.Center(
+                  child: pw.Text(
+                    store.address,
+                    textAlign: pw.TextAlign.center,
+                    style: const pw.TextStyle(fontSize: 7.5),
+                  ),
+                ),
+              if (store.phone.isNotEmpty)
+                pw.Center(
+                  child: pw.Text(
+                    'Telp: ${store.phone}',
+                    style: const pw.TextStyle(fontSize: 7.5),
+                  ),
+                ),
+              pw.Divider(thickness: 0.5),
+              pw.Center(
+                child: pw.Text(
+                  'TAGIHAN QRIS (NOMINAL PAS)',
+                  style: pw.TextStyle(
+                    fontSize: 8.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              pw.Divider(thickness: 0.5),
+              _pdfRow('ID', externalId, fontSize: 7.5),
+              _pdfRow('Waktu', _dateTimeFormat.format(DateTime.now()),
+                  fontSize: 7.5),
+              _pdfRow(
+                'Nominal',
+                _fmtMoney(amount.round(), sym),
+                fontSize: 9,
+                bold: true,
+              ),
+              pw.Divider(thickness: 0.5),
+              pw.SizedBox(height: 6),
+              pw.Center(
+                child: qrisString.trim().isNotEmpty
+                    ? pw.BarcodeWidget(
+                        barcode: pw.Barcode.qrCode(),
+                        data: qrisString.trim(),
+                        width: qrSize,
+                        height: qrSize,
+                      )
+                    : (qrisImageBytes != null
+                        ? pw.Image(
+                            pw.MemoryImage(qrisImageBytes),
+                            width: qrSize,
+                            height: qrSize,
+                          )
+                        : pw.Text(
+                            '[QRIS tidak tersedia]',
+                            style: const pw.TextStyle(fontSize: 8),
+                          )),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Center(
+                child: pw.Text(
+                  'Scan QRIS di atas dengan Mobile Banking / E-Wallet',
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 7.5),
+                ),
+              ),
+              pw.Center(
+                child: pw.Text(
+                  'Nominal sudah pas & otomatis',
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    return doc.save();
+  }
+
   Future<Uint8List> buildProfitLossPdf({
     required StoreConfig store,
     required ProfitLossSummary summary,

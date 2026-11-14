@@ -12,6 +12,7 @@ class EscPosService {
   static final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
 
   static const List<int> _cmdInit = [0x1B, 0x40];
+  static const List<int> _cmdResetLeftMargin = [0x1D, 0x4C, 0x00, 0x00];
   static const List<int> _cmdAlignLeft = [0x1B, 0x61, 0x00];
   static const List<int> _cmdAlignCenter = [0x1B, 0x61, 0x01];
   static const List<int> _cmdBoldOn = [0x1B, 0x45, 0x01];
@@ -21,6 +22,44 @@ class EscPosService {
   static const List<int> _cmdTextDoubleBoth = [0x1D, 0x21, 0x11];
   static const List<int> _cmdCutPartial = [0x1D, 0x56, 0x42, 0x00];
   static const List<int> _cmdOpenDrawer = [0x1B, 0x70, 0x00, 0x19, 0xFA];
+
+  /// Reset printer (`ESC @`), margin kiri 0 (`GS L 0 0`), dan lebar area cetak (`GS W`)
+  List<int> _buildInitWithLayout(int paperWidthMm) {
+    // 58mm = 384 dots (0x0180), 80mm = 576 dots (0x0240)
+    final dots = paperWidthMm >= 80 ? 576 : 384;
+    final nL = dots & 0xFF;
+    final nH = (dots >> 8) & 0xFF;
+    return [
+      ..._cmdInit,
+      ..._cmdResetLeftMargin,
+      0x1D,
+      0x57,
+      nL,
+      nH,
+    ];
+  }
+
+  /// Native ESC/POS QR Code Model 2 (`GS ( k`)
+  List<int> _buildEscPosQrCode(String data, {int moduleSize = 4}) {
+    final qrBytes = utf8.encode(data);
+    final pLen = qrBytes.length + 3;
+    final pL = pLen & 0xFF;
+    final pH = (pLen >> 8) & 0xFF;
+    final safeSize = moduleSize.clamp(2, 8);
+    return [
+      // 1. Select QR Code Model 2 (cn=49, fn=65, n1=50, n2=0)
+      0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+      // 2. Set module size (cn=49, fn=67, n=safeSize)
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, safeSize,
+      // 3. Set error correction level M (cn=49, fn=69, n=49)
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31,
+      // 4. Store QR data in symbol storage area (cn=49, fn=80, m=48)
+      0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30,
+      ...qrBytes,
+      // 5. Print QR Code symbol (cn=49, fn=81, m=48)
+      0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30,
+    ];
+  }
 
   /// Perintah ESC/POS membuka laci kas (RJ11 Cash Drawer Kick)
   Uint8List buildOpenDrawerCommand() => Uint8List.fromList(_cmdOpenDrawer);
@@ -109,7 +148,7 @@ class EscPosService {
     final sym = store.currencySymbol;
     final out = <int>[];
 
-    out.addAll(_cmdInit);
+    out.addAll(_buildInitWithLayout(paperWidthMm));
     if (openDrawer) {
       out.addAll(_cmdOpenDrawer);
     }
@@ -220,7 +259,7 @@ class EscPosService {
     final width = _lineWidth(paperWidthMm);
     final out = <int>[];
 
-    out.addAll(_cmdInit);
+    out.addAll(_buildInitWithLayout(paperWidthMm));
     out.addAll(_cmdAlignCenter);
     out.addAll(_cmdBoldOn);
     out.addAll(_cmdTextDoubleBoth);
@@ -265,7 +304,7 @@ class EscPosService {
     final sym = store.currencySymbol;
     final out = <int>[];
 
-    out.addAll(_cmdInit);
+    out.addAll(_buildInitWithLayout(paperWidthMm));
     out.addAll(_cmdAlignCenter);
     out.addAll(_cmdBoldOn);
     out.addAll(_encodeLine(store.name.toUpperCase()));
@@ -315,7 +354,7 @@ class EscPosService {
     final width = _lineWidth(paperWidthMm);
     final out = <int>[];
 
-    out.addAll(_cmdInit);
+    out.addAll(_buildInitWithLayout(paperWidthMm));
     out.addAll(_cmdAlignCenter);
     out.addAll(_cmdBoldOn);
     out.addAll(_encodeLine(store.name.toUpperCase()));
@@ -332,6 +371,76 @@ class EscPosService {
     out.addAll(_encodeLine('KasirPro Universal POS'));
     out.addAll([0x0A, 0x0A, 0x0A]);
     out.addAll(_cmdCutPartial);
+    return Uint8List.fromList(out);
+  }
+
+  /// Build Slip Tagihan QRIS (Nominal Pas) 58mm atau 80mm dengan Native ESC/POS QR Code
+  Uint8List buildQrisPaymentSlip({
+    required StoreConfig store,
+    required String externalId,
+    required double amount,
+    required String qrisString,
+    int paperWidthMm = 58,
+    bool autoCut = true,
+  }) {
+    final width = _lineWidth(paperWidthMm);
+    final sym = store.currencySymbol;
+    final out = <int>[];
+
+    out.addAll(_buildInitWithLayout(paperWidthMm));
+    out.addAll(_cmdAlignCenter);
+    out.addAll(_cmdBoldOn);
+    out.addAll(_cmdTextDoubleHeight);
+    out.addAll(_encodeLine(store.name));
+    out.addAll(_cmdTextNormal);
+    out.addAll(_cmdBoldOff);
+
+    if (store.address.trim().isNotEmpty) {
+      for (final line in _wrapText(store.address, width)) {
+        out.addAll(_encodeLine(line));
+      }
+    }
+    if (store.phone.trim().isNotEmpty) {
+      out.addAll(_encodeLine('Telp: ${store.phone}'));
+    }
+
+    out.addAll(_cmdAlignLeft);
+    out.addAll(_encodeLine(_divider(width)));
+    out.addAll(_cmdAlignCenter);
+    out.addAll(_cmdBoldOn);
+    out.addAll(_encodeLine('TAGIHAN QRIS (NOMINAL PAS)'));
+    out.addAll(_cmdBoldOff);
+    out.addAll(_cmdAlignLeft);
+    out.addAll(_encodeLine(_divider(width)));
+
+    out.addAll(_encodeLine(_twoColumn('ID:', externalId, width)));
+    out.addAll(
+      _encodeLine(_twoColumn('Waktu:', _dateTimeFormat.format(DateTime.now()), width)),
+    );
+    out.addAll(_cmdBoldOn);
+    out.addAll(
+      _encodeLine(_twoColumn('Nominal:', _fmtMoney(amount.round(), sym), width)),
+    );
+    out.addAll(_cmdBoldOff);
+    out.addAll(_encodeLine(_divider(width)));
+
+    out.addAll(_cmdAlignCenter);
+    out.addAll([0x0A]);
+    if (qrisString.trim().isNotEmpty) {
+      final moduleSize = paperWidthMm >= 80 ? 6 : 4;
+      out.addAll(_buildEscPosQrCode(qrisString.trim(), moduleSize: moduleSize));
+      out.addAll([0x0A]);
+    } else {
+      out.addAll(_encodeLine('[QRIS STRING KOSONG]'));
+    }
+
+    out.addAll(_encodeLine('Scan QRIS di atas dengan'));
+    out.addAll(_encodeLine('Mobile Banking / E-Wallet'));
+    out.addAll(_cmdBoldOn);
+    out.addAll(_encodeLine('Nominal sudah pas & otomatis'));
+    out.addAll(_cmdBoldOff);
+    out.addAll([0x0A, 0x0A, 0x0A]);
+    if (autoCut) out.addAll(_cmdCutPartial);
     return Uint8List.fromList(out);
   }
 }

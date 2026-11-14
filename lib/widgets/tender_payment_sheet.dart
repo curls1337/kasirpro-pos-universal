@@ -51,6 +51,9 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
   bool _isCreatingQris = false;
   String? _qrisError;
   String _qrisStatusText = '';
+  DateTime? _lastQrisCheckAt;
+  bool _isPrintingQris = false;
+  String? _qrisPrintFeedback;
   Timer? _qrisPollTimer;
   bool _isPollingRequest = false;
 
@@ -213,6 +216,8 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
         _qrisImageBytes = bytes;
         _isCreatingQris = false;
         _qrisStatusText = 'Menunggu pembayaran (cek otomatis tiap 3 detik)...';
+        _lastQrisCheckAt = DateTime.now();
+        _qrisPrintFeedback = null;
         _refController.text = charge.externalId;
       });
       _startQrisPolling(charge.externalId);
@@ -221,6 +226,83 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
       setState(() {
         _isCreatingQris = false;
         _qrisError = e.toString();
+      });
+    }
+  }
+
+  String _formatTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  Future<void> _checkQrisStatusOnce() async {
+    final charge = _bcaCharge;
+    if (charge == null ||
+        _isPollingRequest ||
+        _isProcessing ||
+        _completedTx != null) {
+      return;
+    }
+    setState(() {
+      _isPollingRequest = true;
+    });
+    try {
+      final res = await ctrl.checkBcaQrisStatus(charge.externalId);
+      if (!mounted) return;
+      final st = res.status.toLowerCase();
+      setState(() {
+        _lastQrisCheckAt = DateTime.now();
+        _qrisStatusText = 'Status Gateway: ${res.status.toUpperCase()}';
+      });
+      if (res.isPaid || st == 'success') {
+        _qrisPollTimer?.cancel();
+        _qrisPollTimer = null;
+        if (_refController.text.trim().isEmpty) {
+          _refController.text = charge.externalId;
+        }
+        await _submitPayment();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _lastQrisCheckAt = DateTime.now();
+        _qrisStatusText = 'Gagal cek status: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isPollingRequest = false);
+      } else {
+        _isPollingRequest = false;
+      }
+    }
+  }
+
+  Future<void> _printQrisSlip() async {
+    final charge = _bcaCharge;
+    if (charge == null || _isPrintingQris) return;
+    setState(() {
+      _isPrintingQris = true;
+      _qrisPrintFeedback = null;
+    });
+    try {
+      final msg = await ctrl.printQrisSlip(
+        externalId: charge.externalId,
+        amount: charge.amount.toDouble(),
+        qrisString: charge.qrisString,
+        qrisImageBytes: _qrisImageBytes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isPrintingQris = false;
+        _qrisPrintFeedback = msg;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isPrintingQris = false;
+        _qrisPrintFeedback = 'Gagal mencetak QRIS: $e';
       });
     }
   }
@@ -240,6 +322,7 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
         if (!mounted) return;
         final st = res.status.toLowerCase();
         setState(() {
+          _lastQrisCheckAt = DateTime.now();
           _qrisStatusText = 'Status Gateway: ${res.status.toUpperCase()}';
         });
         if (res.isPaid || st == 'success') {
@@ -657,7 +740,48 @@ class _TenderPaymentSheetState extends State<TenderPaymentSheet> {
                 ],
               ),
             ],
+            if (_lastQrisCheckAt != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Terakhir dicek: ${_formatTime(_lastQrisCheckAt!)}',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isPollingRequest ? null : _checkQrisStatusOnce,
+                    child: const Text('🔄 Cek Status'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isPrintingQris ? null : _printQrisSlip,
+                    child: Text(_isPrintingQris ? 'Mencetak...' : '🖨️ Cetak QRIS'),
+                  ),
+                ),
+              ],
+            ),
+            if (_qrisPrintFeedback != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _qrisPrintFeedback!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colors.statusInfo,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _isCreatingQris ? null : _createBcaQris,
               icon: const Icon(Icons.refresh_rounded, size: 18),

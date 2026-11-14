@@ -207,6 +207,44 @@ class PrinterManager {
     return sendRawBytes(config, bytes);
   }
 
+  /// Routing cetak slip tagihan QRIS (nominal pas) ke thermal printer atau PDF
+  Future<PrintResult> printQrisSlip({
+    required StoreConfig store,
+    required String externalId,
+    required double amount,
+    required String qrisString,
+    Uint8List? qrisImageBytes,
+    PrinterConfig? overrideConfig,
+  }) async {
+    final config =
+        overrideConfig ?? await DbHelper.instance.getDefaultPrinter('receipt');
+
+    if (config == null || config.connectionType == 'system_pdf') {
+      final pdfBytes = await ExportService.instance.buildQrisSlipPdf(
+        store: store,
+        externalId: externalId,
+        amount: amount,
+        qrisString: qrisString,
+        qrisImageBytes: qrisImageBytes,
+        paperWidthMm: config?.paperWidthMm ?? 58,
+      );
+      await Printing.layoutPdf(onLayout: (_) async => pdfBytes);
+      return const PrintResult(
+        success: true,
+        message: 'Dialog cetak PDF QRIS dibuka.',
+      );
+    }
+
+    final bytes = EscPosService.instance.buildQrisPaymentSlip(
+      store: store,
+      externalId: externalId,
+      amount: amount,
+      qrisString: qrisString,
+      paperWidthMm: config.paperWidthMm,
+    );
+    return sendRawBytes(config, bytes);
+  }
+
   /// Routing otomatis cetak tiket dapur (F&B) ke printer role 'kitchen'
   Future<PrintResult> printKitchenTicket({
     required StoreConfig store,

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/db_helper.dart';
@@ -952,6 +953,25 @@ class PosController extends ChangeNotifier {
       overrideConfig: overrideConfig,
       cashierName: activeUser?.name ?? 'Kasir',
       customerName: selectedCustomer?.name,
+    );
+    return res.message;
+  }
+
+  Future<String> printQrisSlip({
+    required String externalId,
+    required double amount,
+    required String qrisString,
+    Uint8List? qrisImageBytes,
+    PrinterConfig? overrideConfig,
+  }) async {
+    if (store == null) return 'Profil toko belum tersedia';
+    final res = await _printerManager.printQrisSlip(
+      store: store!,
+      externalId: externalId,
+      amount: amount,
+      qrisString: qrisString,
+      qrisImageBytes: qrisImageBytes,
+      overrideConfig: overrideConfig,
     );
     return res.message;
   }
