@@ -110,6 +110,44 @@ jobs:
                               count=1,
                           )
                   gp.write_text(gtext, encoding="utf-8")
+
+          root_kts = Path("android/build.gradle.kts")
+          if root_kts.exists():
+              rtext = root_kts.read_text(encoding="utf-8")
+              if "compileSdkVersion" not in rtext:
+                  inject_kts = (
+                      "\nsubprojects {\n"
+                      "    afterEvaluate {\n"
+                      "        if (project.hasProperty(\"android\")) {\n"
+                      "            project.extensions.findByName(\"android\")?.let { ext ->\n"
+                      "                try {\n"
+                      "                    ext.javaClass.getMethod(\"compileSdkVersion\", Int::class.javaPrimitiveType).invoke(ext, 36)\n"
+                      "                } catch (_: Exception) {}\n"
+                      "            }\n"
+                      "        }\n"
+                      "    }\n"
+                      "}\n"
+                  )
+                  rtext = rtext.replace('subprojects {\n    project.evaluationDependsOn(":app")', inject_kts + '\nsubprojects {\n    project.evaluationDependsOn(":app")', 1)
+                  root_kts.write_text(rtext, encoding="utf-8")
+
+          root_groovy = Path("android/build.gradle")
+          if root_groovy.exists():
+              rtext = root_groovy.read_text(encoding="utf-8")
+              if "compileSdkVersion 36" not in rtext:
+                  inject_groovy = (
+                      "\nsubprojects {\n"
+                      "    afterEvaluate { project ->\n"
+                      "        if (project.hasProperty('android')) {\n"
+                      "            project.android {\n"
+                      "                compileSdkVersion 36\n"
+                      "            }\n"
+                      "        }\n"
+                      "    }\n"
+                      "}\n"
+                  )
+                  rtext = rtext.replace("subprojects {\n    project.evaluationDependsOn(':app')", inject_groovy + "\nsubprojects {\n    project.evaluationDependsOn(':app')", 1)
+                  root_groovy.write_text(rtext, encoding="utf-8")
           EOF
 
       - name: Run Flutter Analyze
