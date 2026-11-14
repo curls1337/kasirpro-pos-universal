@@ -19,6 +19,80 @@ class SettingsPrinterScreen extends StatefulWidget {
 class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
   PosController get ctrl => widget.controller;
 
+  bool _isScanningBt = false;
+  bool _isConnectingBt = false;
+  BluetoothScanResult? _btScanResult;
+  String? _btFeedbackMessage;
+
+  Future<void> _scanBluetoothDirect() async {
+    setState(() {
+      _isScanningBt = true;
+      _btFeedbackMessage = null;
+    });
+    final res = await ctrl.scanBluetoothPrinters();
+    if (!mounted) return;
+    setState(() {
+      _isScanningBt = false;
+      _btScanResult = res;
+      if (res.errorMessage != null) {
+        _btFeedbackMessage = res.errorMessage;
+      } else if (res.devices.isNotEmpty) {
+        _btFeedbackMessage =
+            'Ditemukan ${res.devices.length} printer Bluetooth yang sudah di-pairing. Ketuk chip untuk langsung Hubungkan & Simpan.';
+      }
+    });
+  }
+
+  Future<void> _quickConnectAndSaveBluetoothDevice(
+    BluetoothDeviceItem device,
+  ) async {
+    if (_isConnectingBt) return;
+    setState(() {
+      _isConnectingBt = true;
+      _btFeedbackMessage = 'Menghubungkan ke ${device.name}...';
+    });
+
+    PrinterConfig? existing;
+    for (final p in ctrl.printerConfigs) {
+      if (p.connectionType == 'bluetooth' &&
+          p.addressOrIp.trim().toLowerCase() ==
+              device.macAddress.trim().toLowerCase()) {
+        existing = p;
+        break;
+      }
+    }
+
+    final targetConfig = existing != null
+        ? existing.copyWith(
+            name: device.name.isNotEmpty ? device.name : existing.name,
+            isDefault: true,
+          )
+        : PrinterConfig(
+            name: device.name.isNotEmpty ? device.name : 'Printer Thermal BT',
+            roleType: 'receipt',
+            connectionType: 'bluetooth',
+            addressOrIp: device.macAddress,
+            port: 9100,
+            paperWidthMm: 58,
+            commandLang: 'escpos',
+            isDefault: true,
+            autoPrint: true,
+            openDrawer: false,
+            createdAt: DateTime.now().toUtc().toIso8601String(),
+          );
+
+    await ctrl.savePrinterConfig(targetConfig);
+    final res = await ctrl.connectPrinter(targetConfig);
+    if (!mounted) return;
+    setState(() {
+      _isConnectingBt = false;
+      _btFeedbackMessage = res.message;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(res.message)),
+    );
+  }
+
   Future<void> _openStoreEditDialog() async {
     final store = ctrl.store;
     if (store == null) return;
@@ -747,6 +821,130 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
           ),
           const SizedBox(height: 16),
         ],
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      ctrl.isPrinterConnected
+                          ? Icons.bluetooth_connected_rounded
+                          : Icons.bluetooth_disabled_rounded,
+                      color: ctrl.isPrinterConnected
+                          ? colors.statusSuccess
+                          : colors.textSecondary,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Panel Koneksi Printer Thermal',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Chip(
+                      backgroundColor: ctrl.isPrinterConnected
+                          ? colors.statusSuccess.withOpacity(0.14)
+                          : null,
+                      label: Text(
+                        ctrl.isPrinterConnected
+                            ? 'Terhubung'
+                            : 'Belum Terhubung',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: ctrl.isPrinterConnected
+                              ? colors.statusSuccess
+                              : colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  ctrl.isPrinterConnected
+                      ? 'Printer aktif: ${ctrl.connectedPrinterName ?? "Thermal Printer"}'
+                      : 'Scan perangkat Bluetooth yang sudah di-pairing di Pengaturan HP, lalu ketuk untuk langsung menghubungkan & menyimpan.',
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed:
+                          (_isScanningBt || _isConnectingBt)
+                              ? null
+                              : _scanBluetoothDirect,
+                      icon: _isScanningBt
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.bluetooth_searching_rounded,
+                              size: 18),
+                      label: Text(
+                          _isScanningBt ? 'Memindai...' : 'Scan Bluetooth'),
+                    ),
+                  ],
+                ),
+                if (_btFeedbackMessage != null) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (_btScanResult != null &&
+                              (!_btScanResult!.permissionGranted ||
+                                  !_btScanResult!.bluetoothEnabled ||
+                                  _btScanResult!.devices.isEmpty))
+                          ? colors.statusDanger.withOpacity(0.08)
+                          : colors.brandPrimary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _btFeedbackMessage!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: (_btScanResult != null &&
+                                (!_btScanResult!.permissionGranted ||
+                                    !_btScanResult!.bluetoothEnabled ||
+                                    _btScanResult!.devices.isEmpty))
+                            ? colors.statusDanger
+                            : colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+                if (_btScanResult != null &&
+                    _btScanResult!.devices.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _btScanResult!.devices.map((d) {
+                      return ActionChip(
+                        avatar: const Icon(Icons.print_rounded, size: 16),
+                        label: Text('${d.name} (${d.macAddress})'),
+                        onPressed: _isConnectingBt
+                            ? null
+                            : () => _quickConnectAndSaveBluetoothDevice(d),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -771,6 +969,13 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
           )
         else
           ...ctrl.printerConfigs.map((cfg) {
+            final isThisConnected = ctrl.isPrinterConnected &&
+                cfg.connectionType != 'system_pdf' &&
+                ((ctrl.connectedPrinterAddress != null &&
+                        ctrl.connectedPrinterAddress!.trim().toLowerCase() ==
+                            cfg.addressOrIp.trim().toLowerCase()) ||
+                    (ctrl.connectedPrinterAddress == null &&
+                        ctrl.connectedPrinterName == cfg.name));
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: Padding(
@@ -784,14 +989,16 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
                         cfg.roleType == 'label'
                             ? Icons.qr_code_2_rounded
                             : Icons.print_rounded,
-                        color: colors.brandPrimary,
+                        color: isThisConnected
+                            ? colors.statusSuccess
+                            : colors.brandPrimary,
                       ),
                       title: Text(
                         '${cfg.name}${cfg.isDefault ? " (Utama)" : ""}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       subtitle: Text(
-                        '${cfg.roleType.toUpperCase()} • ${cfg.connectionType} • ${cfg.addressOrIp.isEmpty ? "OS Print" : cfg.addressOrIp}',
+                        '${cfg.roleType.toUpperCase()} • ${cfg.connectionType} • ${cfg.addressOrIp.isEmpty ? "OS Print" : cfg.addressOrIp}${isThisConnected ? " • Terhubung" : ""}',
                       ),
                       trailing: IconButton(
                         icon: const Icon(Icons.edit_outlined),
@@ -800,7 +1007,39 @@ class _SettingsPrinterScreenState extends State<SettingsPrinterScreen> {
                     ),
                     Wrap(
                       spacing: 8,
+                      runSpacing: 8,
                       children: [
+                        if (cfg.connectionType != 'system_pdf')
+                          isThisConnected
+                              ? OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final res =
+                                        await ctrl.disconnectPrinter(cfg);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(content: Text(res.message)),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.link_off_rounded,
+                                      size: 18),
+                                  label: const Text('Putuskan'),
+                                )
+                              : FilledButton.tonalIcon(
+                                  onPressed: () async {
+                                    final res = await ctrl.connectPrinter(cfg);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(content: Text(res.message)),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.link_rounded,
+                                      size: 18),
+                                  label: const Text('Hubungkan'),
+                                ),
                         OutlinedButton.icon(
                           onPressed: () async {
                             try {

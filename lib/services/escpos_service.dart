@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import '../models/pos_models.dart';
 
@@ -59,6 +60,70 @@ class EscPosService {
       // 5. Print QR Code symbol (cn=49, fn=81, m=48)
       0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30,
     ];
+  }
+
+  /// Konversi gambar QRIS (PNG/JPEG) menjadi ESC/POS Raster Bit Image (`GS v 0`)
+  /// monokrom 1-bit terpusat (`ESC a 1`), lebar 240px (58mm) / 320px (80mm).
+  List<int>? _buildEscPosRasterBitmap(
+    Uint8List imageBytes, {
+    int paperWidthMm = 58,
+  }) {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+
+      final targetWidth = paperWidthMm >= 80 ? 320 : 240;
+      final resized = img.copyResize(
+        decoded,
+        width: targetWidth,
+        interpolation: img.Interpolation.nearest,
+      );
+
+      final width = resized.width;
+      final height = resized.height;
+      final widthBytes = (width + 7) ~/ 8;
+      final xL = widthBytes & 0xFF;
+      final xH = (widthBytes >> 8) & 0xFF;
+      final yL = height & 0xFF;
+      final yH = (height >> 8) & 0xFF;
+
+      final out = <int>[
+        ..._cmdAlignCenter,
+        0x1D,
+        0x76,
+        0x30,
+        0x00,
+        xL,
+        xH,
+        yL,
+        yH,
+      ];
+
+      for (int y = 0; y < height; y++) {
+        for (int bx = 0; bx < widthBytes; bx++) {
+          int byteVal = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            final x = bx * 8 + bit;
+            if (x < width) {
+              final pixel = resized.getPixel(x, y);
+              final alpha = pixel.aNormalized.toDouble();
+              final r = pixel.rNormalized.toDouble() * alpha + (1.0 - alpha);
+              final g = pixel.gNormalized.toDouble() * alpha + (1.0 - alpha);
+              final b = pixel.bNormalized.toDouble() * alpha + (1.0 - alpha);
+              final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+              if (luminance < 0.55) {
+                byteVal |= (1 << (7 - bit));
+              }
+            }
+          }
+          out.add(byteVal);
+        }
+      }
+
+      return out;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Perintah ESC/POS membuka laci kas (RJ11 Cash Drawer Kick)
@@ -374,12 +439,13 @@ class EscPosService {
     return Uint8List.fromList(out);
   }
 
-  /// Build Slip Tagihan QRIS (Nominal Pas) 58mm atau 80mm dengan Native ESC/POS QR Code
+  /// Build Slip Tagihan QRIS (Nominal Pas) 58mm atau 80mm dengan Raster Bitmap (`GS v 0`) atau fallback Native ESC/POS QR (`GS ( k`)
   Uint8List buildQrisPaymentSlip({
     required StoreConfig store,
     required String externalId,
     required double amount,
     required String qrisString,
+    Uint8List? qrisImageBytes,
     int paperWidthMm = 58,
     bool autoCut = true,
   }) {
@@ -426,7 +492,13 @@ class EscPosService {
 
     out.addAll(_cmdAlignCenter);
     out.addAll([0x0A]);
-    if (qrisString.trim().isNotEmpty) {
+    final rasterBytes = (qrisImageBytes != null && qrisImageBytes.isNotEmpty)
+        ? _buildEscPosRasterBitmap(qrisImageBytes, paperWidthMm: paperWidthMm)
+        : null;
+    if (rasterBytes != null && rasterBytes.isNotEmpty) {
+      out.addAll(rasterBytes);
+      out.addAll([0x0A]);
+    } else if (qrisString.trim().isNotEmpty) {
       final moduleSize = paperWidthMm >= 80 ? 6 : 4;
       out.addAll(_buildEscPosQrCode(qrisString.trim(), moduleSize: moduleSize));
       out.addAll([0x0A]);

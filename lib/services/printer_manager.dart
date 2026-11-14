@@ -20,6 +20,20 @@ class BluetoothDeviceItem {
   });
 }
 
+class BluetoothScanResult {
+  final List<BluetoothDeviceItem> devices;
+  final bool bluetoothEnabled;
+  final bool permissionGranted;
+  final String? errorMessage;
+
+  const BluetoothScanResult({
+    this.devices = const [],
+    required this.bluetoothEnabled,
+    required this.permissionGranted,
+    this.errorMessage,
+  });
+}
+
 class PrintResult {
   final bool success;
   final String message;
@@ -71,16 +85,76 @@ class PrinterManager {
     }
   }
 
+  /// Pindai perangkat Bluetooth yang sudah dipairing beserta status izin & adapter
+  Future<BluetoothScanResult> scanBluetoothWithStatus() async {
+    if (kIsWeb) {
+      return const BluetoothScanResult(
+        bluetoothEnabled: false,
+        permissionGranted: false,
+        errorMessage: 'Bluetooth thermal tidak didukung di browser Web.',
+      );
+    }
+
+    bool permGranted = false;
+    bool btEnabled = false;
+    try {
+      permGranted = await ensureBluetoothPermissions();
+      if (!permGranted) {
+        return const BluetoothScanResult(
+          bluetoothEnabled: false,
+          permissionGranted: false,
+          errorMessage:
+              'Izin Bluetooth ditolak. Buka Pengaturan HP dan izinkan akses Bluetooth / Perangkat Terdekat.',
+        );
+      }
+
+      btEnabled = await isBluetoothEnabled();
+      if (!btEnabled) {
+        return const BluetoothScanResult(
+          bluetoothEnabled: false,
+          permissionGranted: true,
+          errorMessage:
+              'Bluetooth HP dalam keadaan mati. Nyalakan Bluetooth terlebih dahulu lalu scan ulang.',
+        );
+      }
+
+      final paired = await PrintBluetoothThermal.pairedBluetooths;
+      final devices = paired
+          .map((d) => BluetoothDeviceItem(
+                name: d.name.isEmpty ? 'Thermal Printer' : d.name,
+                macAddress: d.macAdress,
+              ))
+          .toList();
+
+      if (devices.isEmpty) {
+        return const BluetoothScanResult(
+          devices: [],
+          bluetoothEnabled: true,
+          permissionGranted: true,
+          errorMessage:
+              'Belum ada printer yang di-pairing. Pasangkan printer di Pengaturan Bluetooth HP terlebih dahulu.',
+        );
+      }
+
+      return BluetoothScanResult(
+        devices: devices,
+        bluetoothEnabled: true,
+        permissionGranted: true,
+      );
+    } catch (e) {
+      return BluetoothScanResult(
+        devices: const [],
+        bluetoothEnabled: btEnabled,
+        permissionGranted: permGranted,
+        errorMessage: 'Gagal memindai Bluetooth: $e',
+      );
+    }
+  }
+
   /// Pindai perangkat Bluetooth yang sudah dipairing
   Future<List<BluetoothDeviceItem>> scanBluetoothDevices() async {
-    await ensureBluetoothPermissions();
-    final paired = await PrintBluetoothThermal.pairedBluetooths;
-    return paired
-        .map((d) => BluetoothDeviceItem(
-              name: d.name.isEmpty ? 'Thermal Printer' : d.name,
-              macAddress: d.macAdress,
-            ))
-        .toList();
+    final res = await scanBluetoothWithStatus();
+    return res.devices;
   }
 
   Future<bool> connectBluetooth(String macAddress) async {
@@ -91,6 +165,130 @@ class PrinterManager {
 
   Future<bool> disconnectBluetooth() async {
     return PrintBluetoothThermal.disconnect;
+  }
+
+  /// Hubungkan printer (Bluetooth atau uji koneksi WiFi TCP)
+  Future<PrintResult> connectPrinter(PrinterConfig config) async {
+    try {
+      if (config.connectionType == 'system_pdf') {
+        return const PrintResult(
+          success: true,
+          message: 'Mode System PDF tidak memerlukan koneksi hardware.',
+        );
+      }
+
+      if (config.connectionType == 'bluetooth') {
+        if (config.addressOrIp.trim().isEmpty) {
+          return const PrintResult(
+            success: false,
+            message: 'Alamat MAC/UUID Bluetooth printer belum diatur.',
+          );
+        }
+        final permGranted = await ensureBluetoothPermissions();
+        if (!permGranted) {
+          return const PrintResult(
+            success: false,
+            message: 'Izin Bluetooth belum diberikan di Pengaturan HP.',
+          );
+        }
+        final btEnabled = await isBluetoothEnabled();
+        if (!btEnabled) {
+          return const PrintResult(
+            success: false,
+            message: 'Bluetooth HP sedang mati. Nyalakan Bluetooth terlebih dahulu.',
+          );
+        }
+        final ok = await connectBluetooth(config.addressOrIp);
+        return PrintResult(
+          success: ok,
+          message: ok
+              ? 'Terhubung ke ${config.name}'
+              : 'Gagal terhubung ke ${config.name}. Pastikan printer menyala & sudah di-pairing.',
+        );
+      }
+
+      if (config.connectionType == 'wifi_tcp') {
+        final ip = config.addressOrIp.trim();
+        if (ip.isEmpty) {
+          return const PrintResult(
+            success: false,
+            message: 'Alamat IP printer belum diatur.',
+          );
+        }
+        final port = config.port > 0 ? config.port : 9100;
+        final socket = await Socket.connect(
+          ip,
+          port,
+          timeout: const Duration(seconds: 4),
+        );
+        await socket.close();
+        return PrintResult(
+          success: true,
+          message: 'Printer WiFi ${config.name} ($ip:$port) terhubung.',
+        );
+      }
+
+      return const PrintResult(
+        success: false,
+        message: 'Tipe koneksi printer tidak dikenal.',
+      );
+    } catch (e) {
+      return PrintResult(
+        success: false,
+        message: 'Gagal menghubungkan ${config.name}: $e',
+      );
+    }
+  }
+
+  /// Putuskan koneksi printer aktif
+  Future<PrintResult> disconnectPrinter(PrinterConfig config) async {
+    try {
+      if (config.connectionType == 'bluetooth') {
+        final ok = await disconnectBluetooth();
+        return PrintResult(
+          success: ok,
+          message: ok
+              ? 'Koneksi ${config.name} diputus.'
+              : 'Gagal memutus koneksi ${config.name}.',
+        );
+      }
+      return PrintResult(
+        success: true,
+        message: 'Koneksi ${config.name} diputus.',
+      );
+    } catch (e) {
+      return PrintResult(
+        success: false,
+        message: 'Gagal memutus koneksi: $e',
+      );
+    }
+  }
+
+  /// Auto-reconnect printer struk default saat aplikasi dibuka
+  Future<PrinterConfig?> autoReconnectDefaultPrinter() async {
+    try {
+      if (kIsWeb) return null;
+      final config = await DbHelper.instance.getDefaultPrinter('receipt');
+      if (config == null ||
+          config.connectionType != 'bluetooth' ||
+          config.addressOrIp.trim().isEmpty) {
+        return null;
+      }
+      if (await isBluetoothConnected) {
+        return config;
+      }
+      final permGranted = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!permGranted) return null;
+      final btEnabled = await isBluetoothEnabled();
+      if (!btEnabled) return null;
+
+      final ok = await PrintBluetoothThermal.connect(
+        macPrinterAddress: config.addressOrIp.trim(),
+      );
+      return ok ? config : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Kirim raw bytes (ESC/POS atau TSPL/CPCL) ke printer Bluetooth atau WiFi TCP :9100
@@ -240,6 +438,7 @@ class PrinterManager {
       externalId: externalId,
       amount: amount,
       qrisString: qrisString,
+      qrisImageBytes: qrisImageBytes,
       paperWidthMm: config.paperWidthMm,
     );
     return sendRawBytes(config, bytes);

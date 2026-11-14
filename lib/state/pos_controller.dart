@@ -54,6 +54,11 @@ class PosController extends ChangeNotifier {
   List<PrinterConfig> printerConfigs = [];
   List<PosTransaction> recentTransactions = [];
 
+  // Printer connection state
+  String? connectedPrinterName;
+  String? connectedPrinterAddress;
+  bool isPrinterConnected = false;
+
   // Cart state
   final List<CartItem> cart = [];
   String orderType = 'retail'; // 'retail' | 'dine_in' | 'takeaway' | 'service'
@@ -117,6 +122,7 @@ class PosController extends ChangeNotifier {
         } else {
           orderType = 'retail';
         }
+        await autoReconnectDefaultPrinter();
       }
     } catch (e) {
       errorMessage = 'Gagal memuat database: $e';
@@ -933,6 +939,58 @@ class PosController extends ChangeNotifier {
   Future<void> deletePrinterConfig(int id) async {
     await _db.deletePrinterConfig(id);
     printerConfigs = await _db.getPrinterConfigs();
+    notifyListeners();
+  }
+
+  Future<BluetoothScanResult> scanBluetoothPrinters() {
+    return _printerManager.scanBluetoothWithStatus();
+  }
+
+  Future<PrintResult> connectPrinter(PrinterConfig config) async {
+    final res = await _printerManager.connectPrinter(config);
+    if (res.success) {
+      isPrinterConnected = true;
+      connectedPrinterName = config.name;
+      connectedPrinterAddress = config.addressOrIp;
+    } else {
+      isPrinterConnected = false;
+      connectedPrinterName = null;
+      connectedPrinterAddress = null;
+    }
+    notifyListeners();
+    return res;
+  }
+
+  Future<PrintResult> disconnectPrinter(PrinterConfig config) async {
+    final res = await _printerManager.disconnectPrinter(config);
+    if (res.success) {
+      isPrinterConnected = false;
+      connectedPrinterName = null;
+      connectedPrinterAddress = null;
+      notifyListeners();
+    }
+    return res;
+  }
+
+  Future<void> autoReconnectDefaultPrinter() async {
+    try {
+      final connectedCfg = await _printerManager.autoReconnectDefaultPrinter();
+      if (connectedCfg != null) {
+        isPrinterConnected = true;
+        connectedPrinterName = connectedCfg.name;
+        connectedPrinterAddress = connectedCfg.addressOrIp;
+      } else {
+        isPrinterConnected = await _printerManager.isBluetoothConnected;
+        if (!isPrinterConnected) {
+          connectedPrinterName = null;
+          connectedPrinterAddress = null;
+        }
+      }
+    } catch (_) {
+      isPrinterConnected = false;
+      connectedPrinterName = null;
+      connectedPrinterAddress = null;
+    }
     notifyListeners();
   }
 
